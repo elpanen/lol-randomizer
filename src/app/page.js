@@ -1,65 +1,239 @@
-import Image from "next/image";
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { supabase } from '../lib/supabase'
+
+function toRiotChampionId(name) {
+  const map = {
+    "Wukong": "MonkeyKing",
+    "Nunu & Willump": "NunuWillump",
+    "Dr. Mundo": "DrMundo",
+    "K'Sante": "KSante",
+    "Vel'Koz": "Velkoz",
+    "Kai'Sa": "Kaisa",
+    "Cho'Gath": "Chogath",
+    "Kha'Zix": "Khazix",
+    "Rek'Sai": "RekSai",
+    "Bel'Veth": "Belveth",
+    "LeBlanc": "Leblanc"
+  }
+
+  return map[name] || name.replace(/[^a-zA-Z]/g, '')
+}
 
 export default function Home() {
+  const canvasRef = useRef(null)
+
+  const [champions, setChampions] = useState([])
+  const [runes, setRunes] = useState(null)
+
+  const [champ, setChamp] = useState(null)
+  const [primary, setPrimary] = useState([])
+  const [secondary, setSecondary] = useState([])
+
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase.from('champions').select('*')
+      setChampions(data || [])
+    }
+    load()
+  }, [])
+
+  
+  useEffect(() => {
+    async function loadRunes() {
+      const res = await fetch(
+        'https://ddragon.leagueoflegends.com/cdn/14.23.1/data/en_US/runesReforged.json'
+      )
+      const data = await res.json()
+      setRunes(data)
+    }
+
+    loadRunes()
+  }, [])
+
+
+  useEffect(() => {
+  const canvas = canvasRef.current
+  const ctx = canvas.getContext('2d')
+
+  canvas.width = window.innerWidth
+  canvas.height = window.innerHeight
+
+  let last = null
+  let points = []
+
+  function move(e) {
+    if (!last) {
+      last = { x: e.clientX, y: e.clientY }
+      return
+    }
+
+    const dx = e.clientX - last.x
+    const dy = e.clientY - last.y
+    const dist = Math.hypot(dx, dy)
+
+    const steps = Math.max(1, dist / 2)
+
+    for (let i = 0; i < steps; i++) {
+      points.push({
+        x: last.x + (dx * i) / steps,
+        y: last.y + (dy * i) / steps,
+        life: 1,
+        size: 2 + Math.min(dist * 0.08, 6)
+      })
+    }
+
+    last = { x: e.clientX, y: e.clientY }
+  }
+
+  function draw() {
+    // IMPORTANT: no background fill (keeps brightness)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i]
+      p.life -= 0.035
+
+      if (p.life <= 0) {
+        points.splice(i, 1)
+        i--
+        continue
+      }
+
+      const alpha = p.life
+
+      ctx.shadowColor = 'rgba(0, 102, 255, 0.9)'
+      ctx.shadowBlur = 10
+
+      ctx.fillStyle = `rgba(0, 180, 255, ${alpha * 0.25})`
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.size * 2.2, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.shadowBlur = 0
+
+      ctx.fillStyle = `rgba(72, 132, 223, 0.9 ${alpha})`
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    requestAnimationFrame(draw)
+  }
+
+  window.addEventListener('mousemove', move)
+  draw()
+
+  return () => window.removeEventListener('mousemove', move)
+}, [])
+
+ 
+  function pick() {
+    if (!champions.length || !runes) return
+
+    const champPick = champions[Math.floor(Math.random() * champions.length)]
+
+    const primaryTree = runes[Math.floor(Math.random() * runes.length)]
+
+    let secondaryTree = runes[Math.floor(Math.random() * runes.length)]
+    while (secondaryTree.name === primaryTree.name) {
+      secondaryTree = runes[Math.floor(Math.random() * runes.length)]
+    }
+
+
+    const keystone =
+      primaryTree.slots[0].runes[
+        Math.floor(Math.random() * primaryTree.slots[0].runes.length)
+      ]
+
+    const primaryOthers = primaryTree.slots
+      .slice(1)
+      .flatMap(s => s.runes)
+      .sort(() => 0.5 - Math.random())
+      .slice(0, 3)
+
+    
+    const secondary = secondaryTree.slots
+      .slice(1)
+      .flatMap(s => s.runes)
+      .sort(() => 0.5 - Math.random())
+      .slice(0, 2)
+
+    const riotId = toRiotChampionId(champPick.name)
+
+    setChamp({
+      ...champPick,
+      splash: `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${riotId}_0.jpg`
+    })
+
+    setPrimary([keystone, ...primaryOthers])
+    setSecondary(secondary)
+  }
+
+ 
+  function getIcon(iconPath) {
+    return `https://ddragon.leagueoflegends.com/cdn/img/${iconPath}`
+  }
+
+  
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <>
+      <canvas
+        ref={canvasRef}
+        style={{ position: "fixed", inset: 0, pointerEvents: "none" }}
+      />
+
+      <div className="layout">
+        <div className="sidebar left-bg" />
+
+        <div className="main">
+          <h1 className="header-title">LoL Randomizer</h1>
+
+          <div className="content">
+            <button onClick={pick}>RANDOMIZE</button>
+
+            {champ && (
+              <div className="champ-card">
+                <h2>{champ.name}</h2>
+
+                <img
+                  src={champ.splash}
+                  style={{ width: 420, borderRadius: 12 }}
+                />
+
+                {/* PRIMARY */}
+                <div className="rune-primary">
+                  <img
+                    className="rune-keystone"
+                    src={getIcon(primary[0].icon)}
+                  />
+
+                  {primary.slice(1).map(r => (
+                    <img
+                      key={r.name}
+                      className="rune-primary-small"
+                      src={getIcon(r.icon)}
+                    />
+                  ))}
+                </div>
+
+                {/* SECONDARY */}
+                <div className="rune-secondary" style={{ marginTop: 12 }}>
+                  {secondary.map(r => (
+                    <img
+                      key={r.name}
+                      src={getIcon(r.icon)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+
+        <div className="sidebar right-bg" />
+      </div>
+    </>
+  )
 }
